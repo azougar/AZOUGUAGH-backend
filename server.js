@@ -192,6 +192,8 @@ io.on('connection', (socket) => {
     });
 });
 
-// تشغيل السيرفر
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
+// تشغيل السيرفر وحل الباب لـ Docker
+const PORT = 5000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is listening on 0.0.0.0:${PORT}`);
+});
