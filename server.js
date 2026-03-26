@@ -10,11 +10,11 @@ const path = require('path');
 
 const app = express();
 
-// الروابط لي مسموح ليهم يتصلو بالسيرفر (البيسي ديالك + السيت ديال Vercel)
-const allowedOrigins = ["http://localhost:5173", "https://azouguagh.vercel.app"];
-
+// إعدادات CORS النهائية باش تقبل أي دومين بلا مشاكل
 app.use(cors({
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+        callback(null, true); // هادي كتخلي السيرفر يقبل أي رابط
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
@@ -23,10 +23,13 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const server = http.createServer(app);
+
+// إعدادات CORS ديال Socket.io (الشات)
 const io = new Server(server, {
     cors: {
-        origin: allowedOrigins,
-        methods: ["GET", "POST"]
+        origin: true, // يقبل أي رابط
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
@@ -150,10 +153,9 @@ app.post('/api/rooms/requests/respond', (req, res) => {
     });
 });
 
-// 8. رفع صورة البروفايل (معدلة باش تخدم فالسيرفر أونلاين)
+// 8. رفع صورة البروفايل
 app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
     const { userId } = req.body;
-    // هاد السطر كيخلي الرابط ديال التصويرة يتصاوب أوتوماتيك على حساب السيرفر (Vercel ولا Local)
     const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     
     const sql = "UPDATE Users SET profile_pic = ? WHERE id = ?";
