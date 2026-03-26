@@ -1,7 +1,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
-const bcrypt = require('bcrypt'); // 1. زدنا التشفير هنا
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,49 +10,27 @@ const path = require('path');
 
 const app = express();
 
+// الروابط لي مسموح ليهم يتصلو بالسيرفر (البيسي ديالك + السيت ديال Vercel)
+const allowedOrigins = ["http://localhost:5173", "https://azouguagh.vercel.app"];
+
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
 
-// إعداد السيرفر باش يقدر يورينا التصاور اللي فدوسي uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// إعداد Multer (فين وكيفاش غيتسجلو التصاور)
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        // غنسميو التصويرة بـ ID ديال اليوزر باش ما يتلفوش
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
-});
-const upload = multer({ storage: storage });
-
-// Route لرفع صورة البروفايل
-app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
-    const { userId } = req.body;
-    const imageUrl = `http://localhost:5000/uploads/${req.file.filename}`;
-    
-    const sql = "UPDATE Users SET profile_pic = ? WHERE id = ?";
-    db.query(sql, [imageUrl, userId], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: "Image uploaded", imageUrl: imageUrl });
-    });
-});
-
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173",
+        origin: allowedOrigins,
         methods: ["GET", "POST"]
     }
 });
 
+// الاتصال بالداتابيز ديال Aiven
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -60,24 +38,33 @@ const db = mysql.createConnection({
     database: process.env.DB_NAME,
     port: process.env.DB_PORT,
     ssl: {
-        rejectUnauthorized: false // هادي ضرورية باش Aiven يقبل الاتصال
+        rejectUnauthorized: false
     }
 });
 
 db.connect((err) => {
     if (err) console.error('❌ Error MySQL:', err.message);
-    else console.log('✅ Connected to MySQL');
+    else console.log('✅ Connected to Aiven MySQL');
 });
 
-// --- ROUTES ---
+// إعدادات تصاور البروفايل (Multer)
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + path.extname(file.originalname));
+    }
+});
+const upload = multer({ storage: storage });
 
-// 1. تسجيل مستخدم جديد (بـ Bcrypt)
+// --- ROUTES (المسارات) ---
+
+// 1. تسجيل مستخدم جديد
 app.post('/api/register', async (req, res) => {
     const { username, email, password } = req.body;
     try {
-        // تشفير المودباص قبل ما نحطوه فالداتابيز
         const hashedPassword = await bcrypt.hash(password, 10);
-        
         const sql = "INSERT INTO Users (username, email, password_hash) VALUES (?, ?, ?)";
         db.query(sql, [username, email, hashedPassword], (err, result) => {
             if (err) return res.status(500).json({ error: "Email or Username already exists" });
@@ -88,7 +75,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// 2. تسجيل الدخول (بـ Bcrypt)
+// 2. تسجيل الدخول
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const sql = "SELECT * FROM Users WHERE email = ?";
@@ -98,7 +85,6 @@ app.post('/api/login', (req, res) => {
         
         if (results.length > 0) {
             const user = results[0];
-            // مقارنة المودباص اللي دخل اليوزر مع اللي مشفر فالداتابيز
             const isMatch = await bcrypt.compare(password, user.password_hash);
             
             if (isMatch) {
@@ -134,7 +120,7 @@ app.post('/api/rooms', (req, res) => {
     });
 });
 
-// 5. طلب انضمام
+// 5. طلب انضمام لروم
 app.post('/api/rooms/join', (req, res) => {
     const { room_id, user_id } = req.body;
     const sql = "INSERT INTO Room_Members (room_id, user_id, role, status) VALUES (?, ?, 'member', 'pending')";
@@ -164,6 +150,19 @@ app.post('/api/rooms/requests/respond', (req, res) => {
     });
 });
 
+// 8. رفع صورة البروفايل (معدلة باش تخدم فالسيرفر أونلاين)
+app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
+    const { userId } = req.body;
+    // هاد السطر كيخلي الرابط ديال التصويرة يتصاوب أوتوماتيك على حساب السيرفر (Vercel ولا Local)
+    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    
+    const sql = "UPDATE Users SET profile_pic = ? WHERE id = ?";
+    db.query(sql, [imageUrl, userId], (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "Image uploaded", imageUrl: imageUrl });
+    });
+});
+
 // --- SOCKET.IO ---
 io.on('connection', (socket) => {
     socket.on('join_room', (data) => {
@@ -180,5 +179,6 @@ io.on('connection', (socket) => {
     });
 });
 
+// تشغيل السيرفر
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
