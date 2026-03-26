@@ -10,12 +10,23 @@ const path = require('path');
 
 const app = express();
 
-// إعدادات CORS النهائية باش تقبل أي دومين بلا مشاكل
+// الروابط لي مسموح ليهم يتصلو بالسيرفر ديال AZOUGUAGH
+const allowedOrigins = [
+    "https://azougar.vercel.app",   // الرابط لي خدام بيه دابا
+    "https://azouguagh.vercel.app", // الرابط الجديد إلى بغيتي تخدم بيه
+    "http://localhost:5173"         // باش تتيستي فبيسيك
+];
+
+// إعدادات CORS ديال Express (API)
 app.use(cors({
     origin: function (origin, callback) {
-        callback(null, true); // هادي كتخلي السيرفر يقبل أي رابط
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('CORS Policy: Origin not allowed'));
+        }
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true
 }));
 
@@ -27,7 +38,7 @@ const server = http.createServer(app);
 // إعدادات CORS ديال Socket.io (الشات)
 const io = new Server(server, {
     cors: {
-        origin: true, // يقبل أي رابط
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
     }
